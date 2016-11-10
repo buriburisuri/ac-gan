@@ -15,6 +15,7 @@ tf.sg_verbosity(10)
 
 batch_size = 32   # batch size
 num_category = 10  # total categorical factor
+num_cont = 2  # total continuous factor
 num_dim = 50  # total latent dimension
 
 #
@@ -41,7 +42,10 @@ y_disc = tf.concat(0, [y, y * 0])
 z_cat = tf.multinomial(tf.ones((batch_size, num_category), dtype=tf.sg_floatx) / num_category, 1).sg_squeeze().sg_int()
 
 # random seed = random categorical variable + random uniform
-z = z_cat.sg_one_hot(depth=num_category).sg_concat(target=tf.random_uniform((batch_size, num_dim-num_category)))
+z = z_cat.sg_one_hot(depth=num_category).sg_concat(target=tf.random_uniform((batch_size, num_dim - num_category)))
+
+# random continuous variable
+z_cont = z[:, num_category:num_category+num_cont]
 
 # category label
 label = tf.concat(0, [data.train.label, z_cat])
@@ -74,8 +78,13 @@ with tf.sg_context(name='discriminator', size=4, stride=2, act='leaky_relu'):
     # discriminator end
     disc = shared.sg_dense(dim=1, act='linear').sg_squeeze()
 
-    # categorical recognizer end
-    recog_cat = shared.sg_dense(dim=128).sg_dense(dim=num_category, act='linear')
+    # shared recognizer part
+    recog_shared = shared.sg_dense(dim=128)
+
+    # categorical auxiliary classifier end
+    class_cat = recog_shared.sg_dense(dim=num_category, act='linear')
+    # continuous auxiliary classifier end
+    class_cont = recog_shared[batch_size:, :].sg_dense(dim=num_cont, act='sigmoid')
 
 #
 # loss and train ops
@@ -83,10 +92,11 @@ with tf.sg_context(name='discriminator', size=4, stride=2, act='leaky_relu'):
 
 loss_disc = tf.reduce_mean(disc.sg_bce(target=y_disc))  # discriminator loss
 loss_gen = tf.reduce_mean(disc.sg_reuse(input=gen).sg_bce(target=y))  # generator loss
-loss_recog = tf.reduce_mean(recog_cat.sg_ce(target=label))   # recognizer loss
+loss_class = tf.reduce_mean(class_cat.sg_ce(target=label)) \
+             + tf.reduce_mean(class_cont.sg_mse(target=z_cont))  # recognizer loss
 
-train_disc = tf.sg_optim(loss_disc + loss_recog, lr=0.0001, category='discriminator')  # discriminator train ops
-train_gen = tf.sg_optim(loss_gen + loss_recog, lr=0.001, category='generator')  # generator train ops
+train_disc = tf.sg_optim(loss_disc + loss_class, lr=0.0001, category='discriminator')  # discriminator train ops
+train_gen = tf.sg_optim(loss_gen + loss_class, lr=0.001, category='generator')  # generator train ops
 
 
 #
