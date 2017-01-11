@@ -13,9 +13,29 @@ tf.sg_verbosity(10)
 #
 
 batch_size = 100   # batch size
-num_category = 10  # total categorical factor
-num_cont = 2  # total continuous factor
-num_dim = 50  # total latent dimension
+cat_dim = 10   # total categorical factor
+con_dim = 2    # total continuous factor
+rand_dim = 38  # total random latent dimension
+
+
+#
+# create generator & discriminator function
+#
+
+# generator network
+def generator(tensor):
+
+    # reuse flag
+    reuse = len([t for t in tf.global_variables() if t.name.startswith('generator')]) > 0
+
+    with tf.sg_context(name='generator', size=4, stride=2, act='relu', bn=True, reuse=reuse):
+        res = (tensor
+               .sg_dense(dim=1024, name='fc1')
+               .sg_dense(dim=7*7*128, name='fc2')
+               .sg_reshape(shape=(-1, 7, 7, 128))
+               .sg_upconv(dim=64, name='conv1')
+               .sg_upconv(dim=1, act='sigmoid', bn=False, name='conv2'))
+    return res
 
 #
 # inputs
@@ -29,25 +49,16 @@ target_cval_1 = tf.placeholder(dtype=tf.sg_floatx, shape=batch_size)
 target_cval_2 = tf.placeholder(dtype=tf.sg_floatx, shape=batch_size)
 
 # category variables
-z = (tf.ones(batch_size, dtype=tf.sg_intx) * target_num).sg_one_hot(depth=num_category)
+z = (tf.ones(batch_size, dtype=tf.sg_intx) * target_num).sg_one_hot(depth=cat_dim)
 
 # continuous variables
 z = z.sg_concat(target=[target_cval_1.sg_expand_dims(), target_cval_2.sg_expand_dims()])
 
-# random seed = categorical variable + continuous variable + random uniform
-z = z.sg_concat(target=tf.random_uniform((batch_size, num_dim - num_category - num_cont)))
+# random seed = categorical variable + continuous variable + random normal
+z = z.sg_concat(target=tf.random_normal((batch_size, rand_dim)))
 
-#
-# create generator
-#
-
-# generator network
-with tf.sg_context(name='generator', stride=2, act='relu', bn=True):
-    gen = (z.sg_dense(dim=1024)
-           .sg_dense(dim=7 * 7 * 128)
-           .sg_reshape(shape=(-1, 7, 7, 128))
-           .sg_upconv(size=4, dim=64)
-           .sg_upconv(size=4, dim=1, act='sigmoid', bn=False).sg_squeeze())
+# generator
+gen = generator(z).sg_squeeze()
 
 #
 # run generator
@@ -59,7 +70,7 @@ def run_generator(num, x1, x2, fig_name='sample.png'):
         tf.sg_init(sess)
         # restore parameters
         saver = tf.train.Saver()
-        saver.restore(sess, tf.train.latest_checkpoint('asset/train/ckpt'))
+        saver.restore(sess, tf.train.latest_checkpoint('asset/train'))
 
         # run generator
         imgs = sess.run(gen, {target_num: num,
@@ -82,7 +93,7 @@ def run_generator(num, x1, x2, fig_name='sample.png'):
 #
 
 # fake image
-run_generator(np.random.randint(0, num_category, batch_size),
+run_generator(np.random.randint(0, cat_dim, batch_size),
               np.random.uniform(0, 1, batch_size), np.random.uniform(0, 1, batch_size),
               fig_name='fake.png')
 
