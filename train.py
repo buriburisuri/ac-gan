@@ -83,7 +83,7 @@ y_real = tf.ones(batch_size)
 y_fake = tf.zeros(batch_size)
 
 # discriminator labels ( half 1s, half 0s )
-y_disc = tf.concat(0, [y, y * 0])
+y_disc = tf.concat([y, y * 0], 0)
 
 # categorical latent variable
 z_cat = tf.multinomial(tf.ones((batch_size, cat_dim), dtype=tf.sg_floatx) / cat_dim, 1).sg_squeeze().sg_int()
@@ -92,7 +92,7 @@ z_con = tf.random_normal((batch_size, con_dim))
 # random latent variable dimension
 z_rand = tf.random_normal((batch_size, rand_dim))
 # latent variable
-z = tf.concat(1, [z_cat.sg_one_hot(depth=cat_dim), z_con, z_rand])
+z = tf.concat([z_cat.sg_one_hot(depth=cat_dim), z_con, z_rand], 1)
 
 
 #
